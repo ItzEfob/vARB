@@ -1,0 +1,9 @@
+{
+  "predicted_takeover_epoch": 28578,
+  "scheduled_burn_epoch": 28478,
+  "drain_rate_psi_per_epoch": -0.009972321663435344,
+  "initial_psi": 299.9926582099071,
+  "critical_psi_limit": 15.0,
+  "burn_buffer_epochs": 100,
+  "validation_r2": 0.2879717025514109
+}

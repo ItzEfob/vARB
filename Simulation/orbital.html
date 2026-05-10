@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>vARB | Deep Space AI Tactical</title>
+    <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --space-bg: #010409;
+            --panel-bg: rgba(13, 17, 23, 0.9);
+            --nominal: #deff9a;
+            --hazard: #ff3366;
+            --sky: #00d4ff;
+            --gold: #ffcc00;
+            --txt: #e6edf3;
+        }
+
+        body {
+            background-color: var(--space-bg);
+            color: var(--txt);
+            font-family: 'Urbanist', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            height: 100vh;
+        }
+
+        /* --- BACKGROUND STARFIELD --- */
+        #stars {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: url('https://www.transparenttextures.com/patterns/stardust.png');
+            opacity: 0.3;
+            z-index: 0;
+        }
+
+        /* --- DATA HUD (LEFT) --- */
+        #hud {
+            width: 350px;
+            background: var(--panel-bg);
+            border-right: 1px solid rgba(255,255,255,0.05);
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 20;
+            backdrop-filter: blur(20px);
+        }
+
+        .section-label { font-size: 10px; color: #8b949e; letter-spacing: 2px; margin-bottom: 5px; text-transform: uppercase; }
+
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+        .stat-card {
+            background: rgba(255,255,255,0.02);
+            padding: 12px;
+            border-radius: 4px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .stat-card.alert { border-top: 2px solid var(--hazard); background: rgba(255, 51, 102, 0.05); }
+
+        .label { font-size: 9px; color: #8b949e; text-transform: uppercase; }
+        .value { font-size: 18px; font-weight: bold; margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+        .unit { font-size: 11px; font-weight: normal; color: #484f58; }
+
+        /* --- CENTER STAGE --- */
+        #stage {
+            flex-grow: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        #earth {
+            width: 200px;
+            height: 200px;
+            background: radial-gradient(circle at 30% 30%, #1d4ed8, #0f172a);
+            border-radius: 50%;
+            box-shadow: inset -20px -20px 50px rgba(0,0,0,0.8), 0 0 80px rgba(0, 212, 255, 0.1);
+            z-index: 5;
+            position: relative;
+        }
+
+        .orbit-path {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            pointer-events: none;
+            transition: all 4s cubic-bezier(0.4, 0, 0.2, 1); /* SLOW TRANSITION */
+        }
+
+        #path-nominal { width: 480px; height: 480px; border: 1px solid rgba(222, 255, 154, 0.15); }
+        #path-graveyard { width: 850px; height: 850px; border: 1px dashed var(--hazard); opacity: 0; }
+
+        /* Satellite */
+        #orbit-engine {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 480px;
+            height: 480px;
+            transform: translate(-50%, -50%) rotate(0deg);
+            z-index: 10;
+            transition: all 4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .spinning { animation: rotate 25s linear infinite; }
+
+        #sat-unit {
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .sat-body { width: 45px; height: 28px; background: #fff; border-radius: 2px; box-shadow: 0 0 20px rgba(255,255,255,0.3); }
+        .sat-body::before, .sat-body::after { content: ''; position: absolute; width: 35px; height: 18px; background: #234d8c; top: 5px; }
+        .sat-body::before { left: -40px; } .sat-body::after { right: -40px; }
+
+        #plume {
+            width: 18px; height: 0px;
+            background: linear-gradient(to bottom, var(--gold), transparent);
+            border-radius: 50%; opacity: 0; margin: 8px auto;
+            transition: height 2s ease, opacity 1s ease;
+        }
+
+        /* --- SCANNER & AI DECOR --- */
+        .ai-grid {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background-image: radial-gradient(rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: 40px 40px;
+            z-index: 1;
+        }
+
+        /* --- AI LOGS (RIGHT) --- */
+        #ai-logs {
+            width: 320px;
+            background: rgba(1, 4, 9, 0.95);
+            border-left: 1px solid rgba(255,255,255,0.05);
+            padding: 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            z-index: 30;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .log-line { color: #4ade80; opacity: 0.7; }
+        .log-line.error { color: var(--hazard); font-weight: bold; }
+
+        /* --- BOTTOM TACTICAL BAR --- */
+        #tactical-bar {
+            position: absolute;
+            bottom: 30px;
+            left: 380px;
+            right: 350px;
+            background: var(--panel-bg);
+            padding: 20px 40px;
+            border-radius: 4px;
+            border: 1px solid rgba(255,255,255,0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 40;
+        }
+
+        .btn {
+            background: #21262d;
+            border: 1px solid #30363d;
+            color: #c9d1d9;
+            padding: 10px 25px;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-size: 12px;
+        }
+
+        .btn.critical { background: #8e1532; border-color: var(--hazard); color: white; }
+        .btn:disabled { opacity: 0.1; }
+
+        @keyframes rotate { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+        /* MODES */
+        body.takeover #path-graveyard { opacity: 0.4; }
+        body.takeover #path-nominal { opacity: 0.05; }
+        body.takeover #orbit-engine { width: 850px; height: 850px; }
+        body.takeover #plume { height: 60px; opacity: 1; }
+    </style>
+</head>
+<body>
+
+    <div id="stars"></div>
+
+    <div id="hud">
+        <div class="section-label">Orbital Dynamics</div>
+        <div class="stat-card">
+            <div class="label">Altitude (Z-Axis)</div>
+            <div class="value" id="val-alt">700.00 <span class="unit">KM</span></div>
+        </div>
+
+        <div class="section-label">Propulsion & Thermal</div>
+        <div class="stat-grid">
+            <div class="stat-card" id="card-psi">
+                <div class="label">Tank Pressure</div>
+                <div class="value" id="val-psi">285.4 <span class="unit">PSI</span></div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Bus Temp</div>
+                <div class="value" id="val-temp">15.2 <span class="unit">°C</span></div>
+            </div>
+        </div>
+
+        <div class="section-label">AI Inference Engine</div>
+        <div class="stat-card" id="card-ai">
+            <div class="label">Anomaly Probability</div>
+            <div class="value" id="val-ai">0.02 <span class="unit">%</span></div>
+        </div>
+
+        <div class="section-label">Electrical Bus</div>
+        <div class="stat-grid">
+            <div class="stat-card">
+                <div class="label">Voltage</div>
+                <div class="value">28.4 <span class="unit">V</span></div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Vibration</div>
+                <div class="value" id="val-vib">0.01 <span class="unit">G</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="stage">
+        <div class="ai-grid"></div>
+        <div id="earth"></div>
+        <div id="path-nominal" class="orbit-path"></div>
+        <div id="path-graveyard" class="orbit-path"></div>
+
+        <div id="orbit-engine" class="spinning">
+            <div id="sat-unit">
+                <div class="sat-body"></div>
+                <div id="plume"></div>
+            </div>
+        </div>
+
+        <div id="tactical-bar">
+            <div>
+                <h3 id="mode-text" style="margin:0; color: var(--sky); letter-spacing: 1px;">SYSTEM MODE: NOMINAL_OS</h3>
+                <p id="sub-text" style="font-size: 11px; color: #8b949e; margin-top: 4px;">ARB passively monitoring Host Bus Heartbeat.</p>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn" onclick="location.reload()">Reset</button>
+                <button class="btn critical" id="inject">Inject Trauma</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="ai-logs">
+        <div class="section-label" style="margin-bottom: 10px;">Inference Stream</div>
+        <div id="log-container">
+            <div class="log-line">vARB v3.0 Boot Success...</div>
+            <div class="log-line">Loading isolation_forest.pkl...</div>
+            <div class="log-line">Synchronizing with GPS constellation...</div>
+        </div>
+    </div>
+
+    <script>
+        const inject = document.getElementById('inject');
+        const logContainer = document.getElementById('log-container');
+        let isTrauma = false;
+
+        function addLog(msg, isError=false) {
+            const div = document.createElement('div');
+            div.className = isError ? 'log-line error' : 'log-line';
+            div.innerText = `[${new Date().toLocaleTimeString().split(' ')[0]}] ${msg}`;
+            logContainer.prepend(div);
+        }
+
+        // Real-time HUD Jitter
+        setInterval(() => {
+            if (!isTrauma) {
+                document.getElementById('val-psi').innerText = (285 + Math.random()).toFixed(1);
+                document.getElementById('val-ai').innerText = (Math.random() * 0.05).toFixed(2);
+                document.getElementById('val-temp').innerText = (15 + Math.random() * 0.2).toFixed(1);
+                document.getElementById('val-vib').innerText = (Math.random() * 0.02).toFixed(2);
+                if (Math.random() > 0.95) addLog("Scanning telemetry packet...");
+            } else {
+                // Post-trauma logic
+                let psi = parseFloat(document.getElementById('val-psi').innerText);
+                let alt = parseFloat(document.getElementById('val-alt').innerText);
+                document.getElementById('val-psi').innerText = Math.max(0, psi - 0.8).toFixed(1);
+                document.getElementById('val-alt').innerText = (alt + 0.12).toFixed(2);
+                document.getElementById('val-ai').innerText = (99.8 + Math.random() * 0.1).toFixed(2);
+                document.getElementById('val-vib').innerText = (2.4 + Math.random() * 0.5).toFixed(2);
+            }
+        }, 150);
+
+        inject.addEventListener('click', () => {
+            isTrauma = true;
+            document.body.classList.add('takeover');
+            inject.disabled = true;
+
+            // Step-by-step Storytelling logs
+            addLog("!! MULTIVARIATE ANOMALY DETECTED !!", true);
+            setTimeout(() => addLog("Persistence Check: 3/3 samples. CONFIRMED.", true), 800);
+            setTimeout(() => {
+                document.getElementById('mode-text').innerText = "SYSTEM MODE: ARB_TAKEOVER";
+                document.getElementById('mode-text').style.color = "var(--hazard)";
+                document.getElementById('sub-text').innerText = "Host CPU unresponsive. Passivation protocol engaged.";
+                document.getElementById('card-ai').classList.add('alert');
+                document.getElementById('card-psi').classList.add('alert');
+                addLog("Bypassing Primary Flight Computer...", true);
+            }, 1500);
+            setTimeout(() => addLog("Igniting Graveyard Burn: 11 m/s dV", true), 3000);
+        });
+    </script>
+</body>
+</html>

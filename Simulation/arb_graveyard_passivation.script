@@ -1,0 +1,111 @@
+%--------------------------------------------------------------------------
+% ARB Autonomous Graveyard Passivation Verification Script
+% NASA General Mission Analysis Tool (GMAT)
+% Proving the 11 m/s delta-V override maneuver
+%--------------------------------------------------------------------------
+
+%----------------------------------------
+% Spacecraft Configuration
+%----------------------------------------
+Create Spacecraft HostAsset;
+GMAT HostAsset.DateFormat = UTCGregorian;
+GMAT HostAsset.Epoch = '15 May 2026 12:00:00.000';
+GMAT HostAsset.CoordinateSystem = EarthMJ2000Eq;
+GMAT HostAsset.DisplayStateType = Keplerian;
+
+% Initial Nominal Orbit: 700 km circular LEO
+GMAT HostAsset.SMA = 7078.14;
+GMAT HostAsset.ECC = 0.0001;
+GMAT HostAsset.INC = 98.2;
+GMAT HostAsset.RAAN = 45.0;
+GMAT HostAsset.AOP = 0.0;
+GMAT HostAsset.TA = 0.0;
+
+% Physical Mass & Passivation Tank Setup
+GMAT HostAsset.DryMass = 10.0;
+GMAT HostAsset.Tanks = {ChemicalTank1};
+
+Create ChemicalTank ChemicalTank1;
+GMAT ChemicalTank1.AllowNegativeFuelMass = false;
+GMAT ChemicalTank1.FuelMass = 0.5;
+GMAT ChemicalTank1.Pressure = 15.0; % Triggered exactly at the 15 PSI failsafe limit
+GMAT ChemicalTank1.Temperature = 20;
+GMAT ChemicalTank1.RefTemperature = 20;
+
+%----------------------------------------
+% Hardware Override Forces (Thruster)
+%----------------------------------------
+Create ChemicalThruster ARBOverrideThruster;
+GMAT ARBOverrideThruster.CoordinateSystem = Local;
+GMAT ARBOverrideThruster.Origin = Earth;
+GMAT ARBOverrideThruster.Axes = VNB;
+GMAT ARBOverrideThruster.ThrustDirection1 = 1;  % Prograde Burn
+GMAT ARBOverrideThruster.ThrustDirection2 = 0;
+GMAT ARBOverrideThruster.ThrustDirection3 = 0;
+GMAT ARBOverrideThruster.DutyCycle = 1;
+GMAT ARBOverrideThruster.ThrustScaleFactor = 1;
+GMAT ARBOverrideThruster.DecrementMass = true;
+GMAT ARBOverrideThruster.Tank = {ChemicalTank1};
+GMAT ARBOverrideThruster.GravitationalAccel = 9.80665;
+GMAT ARBOverrideThruster.C1 = 10; % 10 Newton emergency blow-down thruster
+GMAT ARBOverrideThruster.K1 = 200; % Isp = 200s
+
+%----------------------------------------
+% Maneuver Setup (11 m/s Delta-V)
+%----------------------------------------
+Create ImpulsiveBurn GraveyardBurn;
+GMAT GraveyardBurn.CoordinateSystem = Local;
+GMAT GraveyardBurn.Origin = Earth;
+GMAT GraveyardBurn.Axes = VNB;
+GMAT GraveyardBurn.Element1 = 0.011; % Exactly 11 m/s (0.011 km/s) prograde
+GMAT GraveyardBurn.Element2 = 0.0;
+GMAT GraveyardBurn.Element3 = 0.0;
+GMAT GraveyardBurn.DecrementMass = true;
+GMAT GraveyardBurn.Tank = {ChemicalTank1};
+
+%----------------------------------------
+% Propagator & Force Model
+%----------------------------------------
+Create ForceModel LEOForceModel;
+GMAT LEOForceModel.CentralBody = Earth;
+GMAT LEOForceModel.PrimaryBodies = {Earth};
+GMAT LEOForceModel.Drag = None; % Isolated orbital mechanics proof
+GMAT LEOForceModel.GravityField.Earth.Degree = 4;
+GMAT LEOForceModel.GravityField.Earth.Order = 4;
+
+Create Propagator LEOProp;
+GMAT LEOProp.FM = LEOForceModel;
+GMAT LEOProp.Type = RungeKutta89;
+GMAT LEOProp.InitialStepSize = 60;
+GMAT LEOProp.Accuracy = 9.999999999999999e-012;
+GMAT LEOProp.MinStep = 0.001;
+GMAT LEOProp.MaxStep = 60;
+
+%----------------------------------------
+% Output Visualization
+%----------------------------------------
+Create OrbitView DefaultOrbitView;
+GMAT DefaultOrbitView.SolverIterations = Current;
+GMAT DefaultOrbitView.UpperLeft = [ 0 0 ];
+GMAT DefaultOrbitView.Size = [ 0.8 0.8 ];
+GMAT DefaultOrbitView.Add = {HostAsset, Earth};
+GMAT DefaultOrbitView.CoordinateSystem = EarthMJ2000Eq;
+GMAT DefaultOrbitView.DrawObject = [ true true ];
+GMAT DefaultOrbitView.DataCollectFrequency = 1;
+GMAT DefaultOrbitView.UpdatePlotFrequency = 50;
+GMAT DefaultOrbitView.NumPointsToRedraw = 0;
+GMAT DefaultOrbitView.ShowPlot = true;
+
+%----------------------------------------
+% Mission Sequence (Execution)
+%----------------------------------------
+BeginMissionSequence;
+
+% 1. Propagate Nominal Orbit for 1 Day (Waiting for AI Trigger)
+Propagate 'Nominal Flight' LEOProp(HostAsset) {HostAsset.ElapsedDays = 1.0};
+
+% 2. ARB AI confirms Trauma or 15 PSI limit breached -> Fire Relays
+Maneuver 'Execute ARB Override Burn' GraveyardBurn(HostAsset);
+
+% 3. Propagate Passivated Asset into Disposal Shell
+Propagate 'Passivation Drift' LEOProp(HostAsset) {HostAsset.ElapsedDays = 2.0};

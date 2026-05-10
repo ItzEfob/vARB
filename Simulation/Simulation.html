@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARB Edge Flight Computer | Digital Twin Simulator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+/* 1. DARK MISSION CONTROL THEME */
+:root {
+  --bg-deep: #0f172a;    /* Dark background */
+  --bg-card: #1e293b;    /* Slightly lighter background for the dashboard card */
+  --txt-safe: #f1f5f9;  /* White/off-white text */
+  --txt-muted: #64748b; /* Muted slate for labels */
+  --color-primary: #deff9a; /* Bright neon green/lime for active elements */
+  --color-armed: #ffaa00;   /* Warning Orange for ARMED state */
+  --color-fire: #ff0044;    /* Critical Red for PASSIVATION FIRING */
+  --color-dead: #64748b;    /* Muted Slate for DEAD state */
+  --border-subtle: rgba(222, 255, 154, 0.2);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background-color: var(--bg-deep);
+  color: var(--txt-safe);
+  font-family: 'Urbanist', sans-serif;
+  margin: 0;
+  padding: 20px;
+}
+
+/* 2. MAIN LAYOUT & HEADER */
+#mission-control {
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  display: grid;
+  gap: 20px;
+  grid-template-rows: auto 1fr auto; /* Header, Charts/States, Controls */
+  height: 90vh;
+  margin: auto;
+  max-width: 1280px;
+  padding: 30px;
+}
+
+header {
+  border-bottom: 1px solid var(--border-subtle);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr repeat(4, 120px);
+  padding-bottom: 20px;
+}
+
+.system-title h1 {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.system-title p {
+  color: var(--txt-muted);
+  margin: 5px 0 0;
+}
+
+.header-metric { text-align: right; }
+.metric-label { color: var(--txt-muted); font-size: 14px; text-transform: uppercase; }
+.metric-value { font-size: 24px; font-weight: 700; }
+.metric-value.state { color: var(--color-primary); }
+
+/* 3. CHART & STATE MACHINE PANELS */
+#main-dashboard {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  display: grid;
+  gap: 30px;
+  grid-template-rows: 1fr auto;
+  padding: 30px;
+  position: relative;
+}
+
+/* The Passivation Burn Banner */
+#passivation-override {
+  background-color: var(--color-fire);
+  color: #fff;
+  display: grid;
+  font-weight: bold;
+  height: 100%;
+  left: 0;
+  place-items: center;
+  position: absolute;
+  text-align: center;
+  top: 0;
+  visibility: hidden; /* JavaScript will trigger this to 'visible' */
+  width: 100%;
+  z-index: 100;
+}
+
+#chart-container {
+  display: grid;
+  gap: 10px;
+  grid-template-rows: repeat(4, 1fr); /* 4 scrolling charts */
+}
+
+.chart-wrapper {
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  padding: 10px;
+  position: relative;
+}
+
+.chart-wrapper label {
+  color: var(--txt-muted);
+  font-size: 12px;
+  left: 10px;
+  position: absolute;
+  text-transform: uppercase;
+  top: 5px;
+}
+
+.chart-wrapper canvas {
+  height: 100%;
+  width: 100%;
+}
+
+/* 4. STATE MACHINE INDICATOR */
+#state-machine {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, 1fr);
+  padding-top: 20px;
+}
+
+.state-node {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  opacity: 0.3;
+  text-align: center;
+  transition: opacity 0.3s, color 0.3s;
+}
+
+.state-node .icon {
+  background-color: var(--bg-deep);
+  border: 4px solid var(--border-subtle);
+  border-radius: 50%;
+  display: grid;
+  font-size: 40px;
+  height: 80px;
+  margin-bottom: 10px;
+  place-items: center;
+  transition: border-color 0.3s, color 0.3s;
+  width: 80px;
+}
+
+.state-node.active { opacity: 1; color: var(--txt-safe); }
+.state-node.active#nominal { color: var(--color-primary); }
+.state-node.active#armed { color: var(--color-armed); }
+.state-node.active#passivation { color: var(--color-fire); }
+.state-node.active#dead { color: var(--color-dead); }
+
+/* Apply primary green to the nominal state node */
+.state-node.active#nominal .icon { border-color: var(--color-primary); color: var(--color-primary); }
+.state-node.active#armed .icon { border-color: var(--color-armed); color: var(--color-armed); }
+.state-node.active#passivation .icon { border-color: var(--color-fire); color: var(--color-fire); }
+.state-node.active#dead .icon { border-color: var(--color-dead); color: var(--color-dead); }
+
+
+/* 5. INTERACTIVE CONTROLS */
+#control-panel {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(3, auto);
+  grid-template-rows: repeat(2, auto);
+  justify-content: center;
+  padding-top: 20px;
+}
+
+#persistence-setter {
+  align-items: center;
+  color: var(--txt-muted);
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+}
+
+button {
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  color: var(--color-primary);
+  cursor: pointer;
+  font-size: 18px;
+  padding: 15px 30px;
+  transition: background-color 0.2s, border-color 0.2s;
+  width: 300px;
+}
+
+button:hover {
+  background-color: rgba(222, 255, 154, 0.05);
+  border-color: var(--color-primary);
+}
+
+button#inject-disaster { color: #fff; }
+button#inject-disaster:hover { background-color: rgba(255, 0, 68, 0.05); border-color: var(--color-fire); }
+button#system-reset { color: var(--txt-muted); width: 100%; grid-column: span 3; margin-top: 10px; }
+button#system-reset:hover { background-color: rgba(100, 116, 139, 0.05); border-color: var(--color-dead); }
+
+select, input[type="range"] {
+  background-color: #1e293b;
+  border: 1px solid var(--border-subtle);
+  color: #fff;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 10px;
+}
+
+#persistence-readout {
+  border-bottom: 2px solid var(--color-primary);
+  color: #fff;
+  font-size: 20px;
+  font-weight: bold;
+  padding: 5px 10px;
+}
+
+/* Specific styling to replicate the image input */
+input[type="number"] {
+  background-color: #1e293b;
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #fff;
+  font-size: 16px;
+  padding: 10px;
+  width: 50px;
+}
+
+    </style>
+</head>
+<body>
+
+<div id="mission-control">
+    <header>
+        <div class="system-title">
+            <h1>ARB Edge Flight Computer</h1>
+            <p id="system-status">System Ready for Mission Start.</p>
+        </div>
+        <div class="header-metric">
+            <div class="metric-label">PRESSURE</div>
+            <div class="metric-value" id="val-pressure">300.0 PSI</div>
+        </div>
+        <div class="header-metric">
+            <div class="metric-label">VOLTAGE</div>
+            <div class="metric-value" id="val-voltage">28.5 V</div>
+        </div>
+        <div class="header-metric">
+            <div class="metric-label">ANOMALY</div>
+            <div class="metric-value" id="val-anomaly">0.0%</div>
+        </div>
+        <div class="header-metric">
+            <div class="metric-label">STATE</div>
+            <div class="metric-value state" id="val-state">NOMINAL</div>
+        </div>
+    </header>
+
+    <main id="main-dashboard">
+
+        <div id="passivation-override">
+            <h1>⚡ PHYSICAL OVERRIDE ENGAGED</h1>
+            <h2>Firing 11 m/s Graveyard Burn</h2>
+        </div>
+
+        <div id="chart-container">
+            <div class="chart-wrapper"><label>Fuel Pressure</label><canvas id="chart-fuel"></canvas></div>
+            <div class="chart-wrapper"><label>Bus Voltage</label><canvas id="chart-voltage"></canvas></div>
+            <div class="chart-wrapper"><label>Angular Velocity</label><canvas id="chart-spin"></canvas></div>
+            <div class="chart-wrapper"><label>AI Anomaly Score</label><canvas id="chart-anomaly"></canvas></div>
+        </div>
+
+        <div id="state-machine">
+            <div class="state-node active" id="nominal">
+                <div class="icon"><i class="fa-solid fa-circle-check"></i></div>
+                <div>NOMINAL</div>
+            </div>
+            <div class="state-node" id="armed">
+                <div class="icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                <div>ARMED</div>
+            </div>
+            <div class="state-node" id="passivation">
+                <div class="icon"><i class="fa-solid fa-fire-flame-curved"></i></div>
+                <div>PASSIVATION FIRING</div>
+            </div>
+            <div class="state-node" id="dead">
+                <div class="icon"><i class="fa-solid fa-skull"></i></div>
+                <div>DEAD</div>
+            </div>
+        </div>
+    </main>
+
+    <footer id="control-panel">
+        <div>
+            <select id="disaster-type">
+                <option value="meteoroid">Micro-meteoroid Leak</option>
+                <option value="power_fail">Voltage Bus Short</option>
+                <option value="radiation">CPU Radiation Death</option>
+            </select>
+        </div>
+        <div id="persistence-setter">
+            <label>Persistence Epochs</label>
+            <input type="number" id="persistence-readout" value="3" readonly>
+            <input type="range" id="persistence-slider" min="1" max="10" value="3">
+        </div>
+        <div>
+            <button id="start-mission">Start Live Mission</button>
+            <button id="inject-disaster">Inject Disaster Now</button>
+        </div>
+        <button id="system-reset">System Reset</button>
+    </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+/* 🚀 ARB EDGE SIMULATOR OS (JavaScript) */
+
+// --- 1. CONFIG & SYSTEM REGISTERS ---
+const pollingRate = 1000; // Tick rate = 1Hz
+let missionEpoch = 0;
+let isMissionActive = false;
+let isDisasterActive = false;
+let currentDisaster = null;
+let current_state = 'NOMINAL';
+let persistentAnomalyStreak = 0;
+let persistenceThreshold = 3;
+
+// Real-world sensor targets (plus Gaussian noise applied per tick)
+let rawTelemetry = {
+  pressure: 300.0,
+  voltage: 28.5,
+  spin: 0.01,
+  heartbeat: 15, // Pings host CPU every tick
+  temp: 15.0
+};
+
+// --- 2. THE EMBEDDED MASTER OS LOOP (Pillars 3 & 4) ---
+function masterFlightLoop() {
+  if (!isMissionActive || current_state === 'DEAD') return;
+  missionEpoch++;
+  console.log(`[Tick ${missionEpoch}] Polling edge sensors...`);
+
+  // --- Step A: Read Physical Sensors & Add Baseline Jitter ---
+  applyGaussianNoise(rawTelemetry);
+
+  // --- Step B: Anomaly Detection (Isolation Forest Inference) ---
+  const aiScore = computeMultivariateAnomaly(rawTelemetry);
+
+  // --- Step C: Update Dashboard & Charts ---
+  updateVisuals(missionEpoch, rawTelemetry, aiScore);
+
+  // --- Step D: State Machine Transition Logic ---
+  processFailsafeRules(aiScore);
+}
+
+// Simulated Isolation Forest (probabilistic takeover logic)
+function computeMultivariateAnomaly(tel) {
+  // Healthy space noise floor (99.5% Nominal)
+  let noise_anomaly = Math.random() < 0.005 ? 0.8 : 0.0;
+
+  if (isDisasterActive) {
+    if (currentDisaster === 'meteoroid') return Math.min(aiScore_base + tel.spin * 10 + persistentAnomalyStreak * 0.1, 1.0);
+    if (currentDisaster === 'power_fail') return Math.min(tel.anomaly_base + persistentAnomalyStreak * 0.2, 1.0);
+    if (currentDisaster === 'radiation') return 1.0; // Instant CPU death
+  }
+  return 0.0 + noise_anomaly;
+}
+
+
+// --- 3. FAILSAFE & DEBOUNCE RULES (Pillar 2) ---
+function processFailsafeRules(aiScore) {
+  const threshold = 0.5; // Strict 50% AI confidence required to 'Arm'
+
+  // Tactical Trauma rule: (AI Anomaly > 50%)
+  if (aiScore > threshold) {
+    persistentAnomalyStreak++;
+
+    // Check if anomaly persists for 3 consecutive minutes (Pillar 2: Sensor Uncertainty Respect)
+    if (persistentAnomalyStreak === 1 && current_state === 'NOMINAL') {
+        transitionState('ARMED', "⚠️ Early Warning: Trauma detected. Arming ARB relays (Debouncing...)");
+    } else if (persistentAnomalyStreak >= persistenceThreshold) {
+        transitionState('DEAD', "⚡ FAILSAFE TRIGGER: Sustained multivariate chaos verified. Physically hijacking thrusters.");
+    }
+  } else {
+    // Reset streak on glitch clearance
+    persistentAnomalyStreak = 0;
+    if (current_state === 'ARMED') {
+        transitionState('NOMINAL', "ℹ️ System Glitch Cleared. Disarming relays.");
+    }
+  }
+}
+
+// --- 4. DATA ENGINE (vARB Digital Twin & Trauma Signatures) ---
+function applyGaussianNoise(tel) {
+  function stdNormal() { let u=0, v=0; while(u === 0) u = Math.random(); while(v === 0) v = Math.random(); return Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v ); }
+
+  // Apply standard sensor vibrations
+  if (current_state === 'NOMINAL' || current_state === 'ARMED') {
+      tel.pressure += stdNormal() * 0.5;
+      tel.voltage += stdNormal() * 0.2;
+      tel.spin = Math.abs(0.01 + stdNormal() * 0.005);
+  }
+
+  // --- TRAUMA SIGNATURE INJECTION (Step 2) ---
+  if (isDisasterActive) {
+      if (currentDisaster === 'meteoroid') {
+          // Scenario A: Pressure drops, Tumble starts (exp leak curve)
+          let leak_rate = 1.0 + persistentAnomalyStreak * 0.5;
+          tel.pressure -= leak_rate;
+          tel.spin += 0.5 + persistentAnomalyStreak * 0.2; // Massive spin increase
+      } else if (currentDisaster === 'power_fail') {
+          // Scenario B: voltage violently drops
+          tel.voltage = Math.max(0.5 + stdNormal() * 0.1, 0.0);
+      } else if (currentDisaster === 'radiation') {
+          // Scenario C: cpu fails (flags 999 code), battery overheads
+          tel.heartbeat = 999;
+          tel.temp += 5 + persistentAnomalyStreak * 2.0;
+      }
+  }
+}
+
+// --- 5. VISUAL INTERFACE (Chart.js & CSS States) ---
+
+const ctxs = ['chart-fuel', 'chart-voltage', 'chart-spin', 'chart-anomaly'];
+const charts = ctxs.map(id => new Chart(id, {
+  type: 'line',
+  data: { labels: [], datasets: [{ data: [], borderColor: id === 'chart-anomaly' ? '#ffaa00' : '#deff9a', borderWidth: 2, pointRadius: 0, fill: false }] },
+  options: { responsive: true, maintainAspectRatio: false, animation: false, scales: { x: { display: false }, y: { display: false, ticks: { display: false } } }, plugins: { legend: { display: false } } }
+}));
+
+function updateCharts(time, tel, anomaly) {
+  const chartData = [tel.pressure, tel.voltage, tel.spin, anomaly];
+  charts.forEach((chart, index) => {
+    chart.data.labels.push(time);
+    chart.data.datasets[0].data.push(chartData[index]);
+    if (chart.data.labels.length > 50) { // Scroll window (keep last 50 pts)
+      chart.data.labels.shift();
+      chart.data.datasets[0].data.shift();
+    }
+    chart.update();
+  });
+}
+
+function updateVisuals(epoch, tel, anomaly) {
+  // Header metrics
+  document.getElementById('val-pressure').textContent = `${tel.pressure.toFixed(1)} PSI`;
+  document.getElementById('val-voltage').textContent = `${tel.voltage.toFixed(1)} V`;
+  document.getElementById('val-anomaly').textContent = `${(anomaly * 100).toFixed(1)}%`;
+
+  // Master Loop log
+  if (current_state !== 'DEAD') {
+    document.getElementById('system-status').textContent = `[Tick ${epoch}] Polling Multivariate Senses...`;
+  }
+
+  // Scrolling charts
+  updateCharts(epoch, tel, anomaly);
+}
+
+function transitionState(newState, message) {
+  if (current_state === newState) return;
+  console.log(`[STATE CHANGE] Transitioning to: ${newState}`);
+  current_state = newState;
+
+  // Update header text
+  document.getElementById('val-state').textContent = newState;
+  document.getElementById('val-state').className = `metric-value state ${newState.toLowerCase()}`;
+  document.getElementById('system-status').textContent = message;
+
+  // Update visual state nodes
+  document.querySelectorAll('.state-node').forEach(node => node.classList.remove('active'));
+  document.getElementById(newState.toLowerCase()).classList.add('active');
+
+  // Trigger PASSIVATION banner on DEAD
+  if (newState === 'DEAD') {
+      document.getElementById('passivation-override').style.visibility = 'visible';
+  }
+}
+
+// --- 6. USER INTERFACE (Buttons) ---
+document.getElementById('persistence-slider').addEventListener('input', (e) => {
+    persistenceThreshold = parseInt(e.target.value);
+    document.getElementById('persistence-readout').value = persistenceThreshold;
+});
+
+document.getElementById('start-mission').addEventListener('click', () => {
+    if (isMissionActive) return;
+    console.log("🏁 Starting Live Mission Stream.");
+    isMissionActive = true;
+    document.getElementById('start-mission').disabled = true;
+    document.getElementById('inject-disaster').disabled = false;
+    // Calibrate sensor noise floor on start
+    setInterval(masterFlightLoop, pollingRate);
+});
+
+document.getElementById('inject-disaster').addEventListener('click', () => {
+    if (!isMissionActive || isDisasterActive) return;
+    console.log("⚠️ Physical Disaster Injected.");
+    isDisasterActive = true;
+    currentDisaster = document.getElementById('disaster-type').value;
+    document.getElementById('inject-disaster').disabled = true;
+});
+
+document.getElementById('system-reset').addEventListener('click', () => {
+    location.reload(); // Quick reset by reloading the page
+});
+</script>
+
+</body>
+</html>
